@@ -1,0 +1,7 @@
+---
+applications:
+  - name: regression
+    buildpack: https://github.com/cloudfoundry/java-buildpack#v3.19
+    path: target/TimeSeriesn-1.0.0.jar
+
+
