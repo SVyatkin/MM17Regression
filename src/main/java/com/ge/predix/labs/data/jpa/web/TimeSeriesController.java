@@ -37,7 +37,6 @@ import com.ge.predix.labs.rest.RestConfig;
 
 @ComponentScan
 @RestController
-//@CrossOrigin(origins = "https://solar-sd-prod.run.aws-usw02-pr.ice.predix.io/")
 @CrossOrigin()
 public class TimeSeriesController {
 
@@ -56,33 +55,67 @@ public class TimeSeriesController {
 
 	private static Map<String, List<Double>> regionsMap = new ConcurrentHashMap<>();
 	private static Map<String, List<Double>> regionsTempMap = new ConcurrentHashMap<>();
-	
-	 /**
+	private static Map<String, List<Double>> regionsMapDays = new ConcurrentHashMap<>();
+	private static Map<String, List<Double>> regionsTempMapDays = new ConcurrentHashMap<>();
+
+	/**
 	 * POST to get prediction
 	 */
-//    @CrossOrigin(origins = "https://solar-sd-prod.run.aws-usw02-pr.ice.predix.io/")
 	@RequestMapping(value = TIME_SERIES_PREDICT, method = RequestMethod.POST)
-	 public List<Point> getForecastPost(@PathVariable String name, @RequestBody Prediction prediction)
+	public List<Point> getForecastPost(@PathVariable String name, @RequestBody Prediction prediction)
 			throws JsonParseException, JsonMappingException, IOException {
-		
-		// get prepared dataset 
-		List<Double> power = regionsMap.get(name);
-		List<Double> temperature = regionsTempMap.get(name);
-		
+		if ("hr".equalsIgnoreCase(prediction.getUnit()))
+			return getHRPrediction(name, prediction);
+		else if ("day".equalsIgnoreCase(prediction.getUnit()))
+			return getDayPrediction(name, prediction);
+		return null;
+	}
+
+	private List<Point> getDayPrediction(String name, Prediction prediction) {
+		List<Double> power = regionsMapDays.get(name);
+		List<Double> temperature = regionsTempMapDays.get(name);
+
 		List<Point> list = new LinkedList<>();
 		// hours prediction
-		
+
 		// get start point from prediction dto
-		long startTimeStamp =  getOsTime(prediction.getStartDate()).getTime();
+		long startTimeStamp = getOsTime(prediction.getStartDate()).getTime();
+		int start = getStartDay(prediction.getStartDate()) - 20;
+		System.out.println("start date: " + start);
+		for (int i = 0; i < prediction.getTimes(); i++) {
+			SimpleRegression simpleRegression = getRegression(power, temperature, start + i, 1);
+			long tm = startTimeStamp + i* 24 * 60L * 60L * 1000L;
+			Point point = new Point(tm, simpleRegression.predict(prediction.getTemperatures()[i]));
+			System.out.println("prediction for ["+ prediction.getTemperatures()[i] +"] = "  + point.getValue());
+			list.add(point);
+
+			System.out.println("slope = " + simpleRegression.getSlope());
+			System.out.println("intercept = " + simpleRegression.getIntercept());
+			System.out.println("sum@2 = " + simpleRegression.getTotalSumSquares());
+			System.out.println("Intercept@2 = " + simpleRegression.getIntercept());
+			System.out.println("sum@2 Err= " + simpleRegression.getMeanSquareError());
+		}
+		return list;
+	}
+
+	private List<Point> getHRPrediction(String name, Prediction prediction) {
+		// get prepared dataset
+		List<Double> power = regionsMap.get(name);
+		List<Double> temperature = regionsTempMap.get(name);
+
+		List<Point> list = new LinkedList<>();
+		// hours prediction
+
+		// get start point from prediction dto
+		long startTimeStamp = getOsTime(prediction.getStartDate()).getTime();
 		int start = getStartPoint(prediction.getStartDate());
 		System.out.println("start date: " + start);
 		for (int i = 0; i < prediction.getTimes(); i++) {
-			SimpleRegression simpleRegression = getRegression(power, temperature, start + i);
-			System.out.println("prediction for ["+ prediction.getTemperatures()[i] +"] = "  + simpleRegression.predict(prediction.getTemperatures()[i]));
-			long tm =  startTimeStamp + i*60L*60L*1000L;
+			SimpleRegression simpleRegression = getRegression(power, temperature, start + i, 24);
+			long tm = startTimeStamp + i * 60L * 60L * 1000L;
 			Point point = new Point(tm, simpleRegression.predict(prediction.getTemperatures()[i]));
+			System.out.println("prediction for ["+ prediction.getTemperatures()[i] +"] = "  + point.getValue());
 			list.add(point);
-			
 
 			System.out.println("slope = " + simpleRegression.getSlope());
 			System.out.println("intercept = " + simpleRegression.getIntercept());
@@ -94,71 +127,48 @@ public class TimeSeriesController {
 	}
 
 	private int getStartPoint(String startDate) {
-		   Date date = getOsTime(startDate);
-		   System.out.println(date);
-		   int st = (int) ((date.getTime()-1463468400000L)/(24*60*60*1000));
-		   System.out.println((date.getTime()-1463468400000L)/(24*60*60*1000));
-		   
-//			int startPoint = (int) ((date.getTime()-1463468400000L)/(24*60*60*1000)%364 + date.getHours());
-		   int stDay = (int) ((date.getTime()-1463468400000L)/(24*60*60*1000)%364);
-		   System.out.println("startDay: " + stDay);
-			int startPoint = (int) (stDay*24 + date.getHours());
-			   System.out.println("startPoint: " + startPoint);
+		Date date = getOsTime(startDate);
+		int st = (int) ((date.getTime() - 1463468400000L) / (24 * 60 * 60 * 1000));
+		int stDay = (int) ((date.getTime() - 1463468400000L) / (24 * 60 * 60 * 1000) % 364);
+		int startPoint = (int) (stDay * 24 + date.getHours());
 		return startPoint;
+	}
+
+	private int getStartDay(String startDate) {
+		Date date = getOsTime(startDate);
+		int st = (int) ((date.getTime() - 1463468400000L) / (24 * 60 * 60 * 1000));
+		int stDay = (int) ((date.getTime() - 1463468400000L) / (24 * 60 * 60 * 1000) % 364);
+		return stDay;
 	}
 
 	private Date getOsTime(String startDate) {
 		SimpleDateFormat formatter = new SimpleDateFormat("dd-MMM-yyyy HH:mm");
 
-	        Date date = null;
-			try {
+		Date date = null;
+		try {
 
-	            date = formatter.parse(startDate);
-	            System.out.println(date.getTime());
+			date = formatter.parse(startDate);
+			System.out.println(date.getTime());
 
-	        } catch (ParseException e) {
-	            e.printStackTrace();
-	        }
+		} catch (ParseException e) {
+			e.printStackTrace();
+		}
 		return date;
 	}
 
-	private SimpleRegression getRegression(List<Double> power, List<Double> temperature, int start) {
+	private SimpleRegression getRegression(List<Double> power, List<Double> temperature, int start, int interval) {
 		int k = 0;
-		int interval = 24;
 		double[][] arr = new double[20][20];
 		SimpleRegression simpleRegression = new SimpleRegression(true);
-		for (int i = 0; i < 20; i++){			 
-			arr[i][0]= temperature.get(start + i * interval);
-			arr[i][1]= power.get(start + i * interval);
+		for (int i = 0; i < 20; i++) {
+			arr[i][0] = temperature.get(start + i * interval);
+			arr[i][1] = power.get(start + i * interval);
 			System.out.println(arr[i][0] + ":" + arr[i][1]);
 		}
-		
+
 		simpleRegression.addData(arr);
 		return simpleRegression;
 	}
-	
-	 @RequestMapping(value = TIME_SERIES_PREDICT, method = RequestMethod.GET)
-	 public List<Point> getForecast(@PathVariable String name)
-	 throws JsonParseException, JsonMappingException, IOException {
-		 
-		// get prepared dataset 
-		 List<Double> power = regionsMap.get(name);
-		 List<Double> temperature = regionsTempMap.get(name);
-		 
-		 // hours prediction
-		 
-		 SimpleRegression simpleRegression = getRegression(power, temperature, 1000);
-				 
-				 
-		 System.out.println("prediction for 12 = " + simpleRegression.predict(12.0));
-		System.out.println("slope = " + simpleRegression.getSlope());
-		System.out.println("intercept = " + simpleRegression.getIntercept());
-
-		System.out.println("sum@2 = " + simpleRegression.getTotalSumSquares());
-		System.out.println("Intercept@2 = " + simpleRegression.getIntercept());
-		System.out.println("sum@2 Err= " + simpleRegression.getMeanSquareError());
-	 return null;
-	 }
 
 	/**
 	 * GET
@@ -181,8 +191,43 @@ public class TimeSeriesController {
 		reBody = getTSResponse(body3);
 		getTimeSeriesDatapointsAdd(reBody, datapointsArr);
 		regionsMap.put(name, datapointsArr);
+		regionsMapDays.put(name, getRegionDataByDay(datapointsArr));
 		System.out.println("Feeders:" + datapointsArr.size());
 		return datapointsArr;
+	}
+
+	private List<Double> getRegionDataByDay(List<Double> datapointsArr) {
+		List<Double> days = new ArrayList<Double>();
+		Double day = 0.0;
+		int count = 0;
+		for (Double point : datapointsArr) {
+			day += point;
+			count++;
+			if (count % 24 == 0) {
+				days.add(day);
+				count = 0;
+				day = 0.0;
+				;
+			}
+		}
+		return days;
+	}
+
+	private List<Double> getRegionAverageDataByDay(List<Double> datapointsArr) {
+		List<Double> days = new ArrayList<Double>();
+		Double day = 0.0;
+		int count = 0;
+		for (Double point : datapointsArr) {
+			day += point;
+			count++;
+			if (count % 24 == 0) {
+				days.add(day / 24);
+				count = 0;
+				day = 0.0;
+				;
+			}
+		}
+		return days;
 	}
 
 	@RequestMapping(value = TIME_SERIES_TEMP_DATAPOINTS, method = RequestMethod.GET)
@@ -199,6 +244,7 @@ public class TimeSeriesController {
 		List<Double> datapointsArr = new ArrayList<Double>();
 		getTimeSeriesDatapointsForTemp(reBody, datapointsArr);
 		regionsTempMap.put(name, datapointsArr);
+		regionsTempMapDays.put(name, getRegionAverageDataByDay(datapointsArr));
 		System.out.println("Temp:" + datapointsArr.size());
 		return datapointsArr;
 	}
