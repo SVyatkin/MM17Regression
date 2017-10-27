@@ -13,7 +13,7 @@ POST forecast request by hours, days and weeks
 
 
 
-Example to get forecast for 5 hours in 7-Nov-2017 12:00
+Example: How to get forecast for 5 hours in 7-Nov-2017 12:00
 
 https://regression.run.aws-usw02-pr.ice.predix.io/ts/predict/Dromore
 
