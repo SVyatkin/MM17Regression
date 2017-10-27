@@ -9,7 +9,7 @@ https://github.com/PredixDev/minds-machines-sf
 
 /ts/predict/{name} 
 
-POST forecast request 
+POST forecast request by hours, days and weeks
 
 
 
