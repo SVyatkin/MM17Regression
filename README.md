@@ -1,4 +1,4 @@
-Hackayon Minds + Machines 2017 
+Hackaton Minds + Machines 2017 
 
 https://github.com/PredixDev/minds-machines-sf
 
@@ -7,13 +7,16 @@ https://github.com/PredixDev/minds-machines-sf
 
 /ts/temp/{name} - init temparture data by region
 
-/ts/predict/{name} POST forecast request 
+/ts/predict/{name} 
+
+POST forecast request 
 
 
 
 Example to get forecast for 5 hours in 7-Nov-2017 12:00
 
 https://regression.run.aws-usw02-pr.ice.predix.io/ts/predict/Dromore
+
 {
    "unit":"hr",
    
